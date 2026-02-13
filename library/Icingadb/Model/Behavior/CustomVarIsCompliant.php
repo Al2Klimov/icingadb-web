@@ -38,18 +38,14 @@ class CustomVarIsCompliant implements RewriteColumnBehavior, QueryAwareBehavior
             $this->query->getResolver()->qualifyPath('customvar_flat', $this->query->getModel()->getTableAlias())
         );
 
-        $filters = [Filter::equal('flatname', $this->customVar)];
-        if (count($this->allowedValues) === 1) {
-            $filters[] = Filter::equal('flatvalue', $this->allowedValues[0]);
-        } else {
-            $filters[] = Filter::any(...array_map(
-                fn($value) => Filter::equal('flatvalue', $value),
-                $this->allowedValues
-            ));
-        }
-
         $subQuery->columns([new Expression('COUNT(*)')])
-            ->filter(Filter::all(...$filters));
+            ->filter(Filter::all(
+                Filter::equal('flatname', $this->customVar),
+                Filter::any(...array_map(
+                    fn($value) => Filter::equal('flatvalue', $value),
+                    $this->allowedValues
+                ))
+            ));
 
         list ($sql, $values) = $this->query->getDb()->getQueryBuilder()->assembleSelect(
             $subQuery->assembleSelect()
