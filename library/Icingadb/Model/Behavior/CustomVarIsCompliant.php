@@ -4,6 +4,7 @@
 
 namespace Icinga\Module\Icingadb\Model\Behavior;
 
+use Icinga\Module\Icingadb\Model\CustomvarFlat;
 use ipl\Orm\AliasedExpression;
 use ipl\Orm\ColumnDefinition;
 use ipl\Orm\Contract\QueryAwareBehavior;
@@ -32,17 +33,26 @@ class CustomVarIsCompliant implements RewriteColumnBehavior, QueryAwareBehavior
             return null;
         }
 
+        $subQuery = $this->query->createSubQuery(
+            new CustomvarFlat(),
+            $this->query->getResolver()->qualifyPath('customvar_flat', $this->query->getModel()->getTableAlias())
+        );
+
+        $filters = [Filter::equal('flatname', $this->customVar)];
+        if (count($this->allowedValues) === 1) {
+            $filters[] = Filter::equal('flatvalue', $this->allowedValues[0]);
+        } else {
+            $filters[] = Filter::any(...array_map(
+                fn($value) => Filter::equal('flatvalue', $value),
+                $this->allowedValues
+            ));
+        }
+
+        $subQuery->columns([new Expression('COUNT(*)')])
+            ->filter(Filter::all(...$filters));
+
         list ($sql, $values) = $this->query->getDb()->getQueryBuilder()->assembleSelect(
-            // TODO: Yes, this is how you make subqueries. But these are not the correct relations, just an example.
-            // Instead, the subquery here must tell whether the host has a custom var $customVar with a value in $allowedValues.
-            // This is probably a bit more complex.
-            $this->query->createSubQuery(
-                new Contract(),
-                $this->query->getResolver()->qualifyPath('contracts', $this->query->getModel()->getTableAlias())
-            )
-                ->columns([new Expression('MIN(%s)', ['end'])])
-                ->filter(Filter::all(Filter::equal('archived', false), Filter::equal('auto_renew', 0)))
-                ->assembleSelect()
+            $subQuery->assembleSelect()
         );
 
         return new AliasedExpression($this->alias, "($sql)", null, ...$values);
